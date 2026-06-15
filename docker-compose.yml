@@ -137,6 +137,24 @@ services:
       retries: 30
       start_period: 10s
 
+
+  splunk:
+    image: splunk/splunk:latest
+    container_name: splunk-enterprise
+    environment:
+      SPLUNK_GENERAL_TERMS: "--accept-sgt-current-at-splunk-com"
+      SPLUNK_START_ARGS: "--accept-license"
+      SPLUNK_PASSWORD: "${SPLUNK_PASSWORD:-ChangeMe123!}"
+      SPLUNK_HEC_TOKEN: "${SPLUNK_HEC_TOKEN:-demo-hec-token}"
+    ports:
+      - "18000:8000"
+      - "8088:8088"
+      - "8089:8089"
+    volumes:
+      - splunk-etc:/opt/splunk/etc
+      - splunk-var:/opt/splunk/var
+
+
   mim-api:
     build:
       context: .
@@ -160,6 +178,10 @@ services:
       GOOGLE_CLOUD_LOCATION: ${GOOGLE_CLOUD_LOCATION:-australia-southeast1}
       GOOGLE_GENAI_USE_VERTEXAI: ${GOOGLE_GENAI_USE_VERTEXAI:-True}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
+      SPLUNK_HEC_URL: ${SPLUNK_HEC_URL:-https://host.docker.internal:8088/services/collector}
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:-}
+      SPLUNK_AUDIT_INDEX: ${SPLUNK_AUDIT_INDEX:-mim_workflow_audit}
+      SPLUNK_VERIFY_SSL: ${SPLUNK_VERIFY_SSL:-false}
 
       # Used when Application Default Credentials are mounted below.
       GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp/application_default_credentials.json
@@ -183,6 +205,8 @@ services:
       - "8000"
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - mongodb-mcp
     healthcheck:
@@ -213,6 +237,7 @@ services:
       - "5173:5173"
     depends_on:
       - mim-api
+      - splunk
 
   # ---------------------------------------------------------------------------
   # Optional ADK workflows
@@ -479,3 +504,5 @@ volumes:
   mongodb-data:
   mongodb-config:
   mongodb-mongot:
+  splunk-etc:
+  splunk-var:

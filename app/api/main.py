@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from pydantic import BaseModel, Field
 
 from app.agents.execution_agent import ExecutionAgent
@@ -14,6 +14,20 @@ from app.api.execution import router as execution_router
 from app.models.workflow_state import WorkflowState
 from app.services.workflow_service import process_workflow
 from fastapi.middleware.cors import CORSMiddleware
+from app.io.splunk_hec_client import SplunkHecClient
+
+
+class SplunkWorkflowUpdateRequest(BaseModel):
+    workflow_id: str
+    workflow_status: str
+    action: str
+    step_id: str | None = None
+    step_title: str | None = None
+    ticket_note: str | None = None
+    ai_summary: str | None = None
+    resolver: str | None = None
+    resolution_summary: str | None = None
+
 
 app = FastAPI(
     title="MIM Incident Intelligence API",
@@ -367,3 +381,30 @@ def get_workflow_action_log(
             errors="replace",
         ),
     }
+
+
+@app.post("/api/splunk/incidents/{incident_id}/workflow-update")
+def send_splunk_workflow_update(
+    incident_id: str,
+    payload: dict[str, Any] = Body(...),
+) -> dict[str, Any]:
+    update_request = SplunkWorkflowUpdateRequest.model_validate(payload)
+
+    client = SplunkHecClient()
+
+    extra: dict[str, Any] = {}
+    if update_request.ticket_note:
+        extra["ticket_note"] = update_request.ticket_note
+
+    return client.send_workflow_event(
+        incident_id=incident_id,
+        workflow_id=update_request.workflow_id,
+        workflow_status=update_request.workflow_status,
+        action=update_request.action,
+        step_id=update_request.step_id,
+        step_title=update_request.step_title,
+        ai_summary=update_request.ai_summary,
+        resolver=update_request.resolver,
+        resolution_summary=update_request.resolution_summary,
+        extra=extra,
+    )

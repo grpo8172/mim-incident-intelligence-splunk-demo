@@ -100,6 +100,52 @@ function App() {
       .catch((err) => setError(err.message));
   }, []);
 
+
+  async function sendWorkflowUpdateToSplunk(workflow, action) {
+    const incidentId = workflow?.incident?.incident_id;
+
+    if (!incidentId) {
+      throw new Error("No incident_id found on workflow");
+    }
+
+    const response = await fetch(
+      `/api/splunk/incidents/${incidentId}/workflow-update`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workflow_id: workflow.workflow_id,
+          workflow_status: workflow.status || "in_progress",
+          action: `${action.action_id}-approved`,
+          step_id: action.action_id,
+          step_title:
+            action.title ||
+            action.summary ||
+            action.description ||
+            "Workflow action approved",
+          ticket_note: `Responder approved ${action.action_id} from the MIM dashboard workflow.`,
+          ai_summary:
+            "MIM dashboard recorded this workflow approval to Splunk as an auditable operational event.",
+          resolver:
+            workflow.analysis?.recommended_resolver_group ||
+            workflow.incident?.raw?.assignment_group ||
+            "MIM Operations Team",
+        }),
+      }
+    );
+
+    const body = await response.json();
+
+    if (!response.ok) {
+      throw new Error(body.detail ?? "Splunk update failed");
+    }
+
+    return body;
+  }  
+
+
   async function createWorkflow() {
     setLoading(true);
     setError("");
@@ -420,6 +466,20 @@ function App() {
                     disabled={loading || !selectedActionId}
                   >
                     Approve and execute
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await sendWorkflowUpdateToSplunk(workflow, actions);
+                        alert("Workflow update sent to Splunk");
+                      } catch (error) {
+                        alert(error instanceof Error ? error.message : "Splunk update failed");
+                      }
+                    }}
+                  >
+                    Send update to Splunk
                   </button>
                 </div>
               </>

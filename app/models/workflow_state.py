@@ -69,3 +69,4 @@ class WorkflowState(BaseModel):
     execution: WorkflowExecution = Field(default_factory=WorkflowExecution)
     validation: WorkflowValidation = Field(default_factory=WorkflowValidation)
     notes: list[str] = Field(default_factory=list)
+
