@@ -1,107 +1,88 @@
-## Local Demo Runbook
+# MIM Incident Intelligence — Splunk Agentic Ops Demo
 
-The MIM demo uses several independent services which are interconnected and start up at the right queued times.
+MIM Incident Intelligence is an AI-assisted Major Incident Management demo for cyber and application incidents. It normalises incident records into a MIM workflow, recommends operational response steps, allows a responder to approve workflow actions, and writes an auditable workflow trail into Splunk.
 
-### Architecture
+## What it demonstrates
 
-```text
-ADK agent / React frontend
-→ FastAPI backend
-→ MongoDB MCP HTTP server
-→ MongoDB container
+- AI-assisted incident classification and response planning.
+- Human approval of proposed MIM workflow actions.
+- A React dashboard running as the primary frontend container.
+- FastAPI workflow APIs for incident workflow creation and approval.
+- Splunk HTTP Event Collector integration.
+- Searchable workflow audit events in mim_workflow_audit.
 
-FastAPI approval endpoint
-→ PlaybookRunner
-→ Ansible
-→ GKE control plane
-→ fake-auth-service deployment
-```
+## Architecture
 
-### Ports
+React frontend container
+  -> FastAPI mim-api container
+      -> Workflow service / AI-assisted incident analysis
+      -> MongoDB / MongoDB MCP operational memory
+      -> Redis normalized incident worker
+      -> Splunk HEC
+          -> Splunk index: mim_workflow_audit
 
-| Service              |    Port |
-| -------------------- | ------: |
-| MongoDB              | `27017` |
-| MongoDB MCP server   |  `3000` |
-| FastAPI backend      |  `8000` |
-| ADK web UI, optional |  `8001` |
+## Services
 
----
+- mim-frontend: React dashboard on port 5173
+- mim-api: FastAPI workflow API on port 8000
+- splunk-enterprise: Splunk Web, HEC, and search API on ports 18000, 8088, and 8089
+- mim-mongodb: local MongoDB-compatible store on port 27017
+- mim-mongodb-mcp: MongoDB MCP operational-memory service on port 3000
+- redis: incident queue on port 6379
+- normalized-incident-worker: handles normalized incident events internally
 
-### Quick Start
-Make sure you have your own credentials and set your project ID:
-```bash
-gcloud auth application-default login
-gcloud config set project your_project_id
-```
-It will tell you where the credentials were saved to file. 
+## Setup
 
-Save them to your tmp:
-```bash
-ADC_SOURCE="your_GCP_credential_directory_location"
-ADC_TARGET="your_GCP_credential_directory_location"
+Copy the example environment file:
 
-sudo rm -rf "$ADC_TARGET"
-mkdir -p "$HOME/.config/gcloud"
+cp .env.example .env
 
-cp "$ADC_SOURCE" "$ADC_TARGET"
-chmod 600 "$ADC_TARGET"
-```
+Set SPLUNK_HEC_TOKEN and SPLUNK_PASSWORD in .env.
 
-Feed Redis queue to send normalized incidents straight to dashboard. 
-```bash
-PYTHONPATH=. python scripts/publish_normalized_cyber_events.py   --api-url="${SAFE_API_URL}"   --total-events 12   --min-delay-seconds 0.5   --max-delay-seconds 3   --burst-probability 0.4   --min-burst-size 2   --max-burst-size 4
-  '
-```
+Start the stack:
 
-Manually force cert to be stale live on powershell:
-```bash
-kubectl patch configmap salesforce-saml-active   -n client-a-uat   --type merge   -p '{"data":{"certificate_fingerprint":"11:22:33:44:STALE"}}'
-```
+docker compose up --build -d
 
+Open the demo services:
 
-Watch live interaction with shell environment:
-```bash
-kubectl get configmap salesforce-saml-active   -n client-a-uat   --watch   --output-watch-events   -o jsonpath='{.type}{" | "}{.object.metadata.resourceVersion}{" | "}{.object.data.certificate_fingerprint}{" | "}{.object.data.metadata_version}{"\n"}'
-```
+- Frontend dashboard: http://localhost:5173
+- FastAPI docs: http://localhost:8000/docs
+- Splunk Web: http://localhost:18000
 
-Start Everything:
-```bash
-docker compose --profile adk-web up -d --build
-```
+Splunk login:
 
-Check and confirm:
-```bash
-docker compose exec mim-api sh -lc '
-  ls -ld /tmp/gcp/application_default_credentials.json
-  test -f /tmp/gcp/application_default_credentials.json &&
-  echo "ADC mount is correct"
-'
-```
-```bash
-docker compose up -d --build
-```
+- username: admin
+- password: value of SPLUNK_PASSWORD
 
-Use a single-line prompt in the CLI:
+## Demo flow
 
-```text
-I have an incoming Incident ID INC9999, Service Salesforce, Short Description Users unable to login, Description Large group of users seeing SSO redirect loop after SAML certificate change, Severity SEV1, Priority P1. 
-```
+1. Open the React dashboard.
+2. Create or open a workflow from a normalised cyber incident.
+3. Review the AI-assisted classification and proposed response actions.
+4. Approve or select a workflow step.
+5. Click Send update to Splunk.
+6. Open Splunk Web.
+7. Search the audit index with:
 
-The GKE node pool may have been scaled to zero to reduce cost and 
-if the certificate is fresh it will not trigger drift so set up the
-env for demo purposes with this command:
-```bash
-ansible-playbook playbooks/salesforce/clean_environment_for_demo.yml
-```
+index="mim_workflow_audit"
+| spath
+| sort - _time
+| table _time incident_id workflow_id workflow_status action step_id ticket_note ai_summary resolver
 
-Run this when done for the day although there is autoscale so some
-things may come back up.
-```bash
-ansible-playbook playbooks/salesforce/shut_down_k8s.yml
-```
+The expected result is a searchable Splunk event showing the workflow ID, incident ID, approved action, responder note, and AI-generated summary.
+
+## Splunk integration
+
+The dashboard appends workflow audit records to Splunk through HEC. It does not edit original Splunk events. Audit events are linked by incident_id and workflow_id.
+
+## AI usage
+
+The system uses AI-assisted workflow logic to classify incidents, assess similarity to historical incidents, recommend resolver groups, and generate structured response steps for human approval.
+
+## Production direction
+
+This is a hackathon demo stack. In production, the FastAPI service could run on Cloud Run or another container platform, while Splunk would typically be an existing enterprise Splunk deployment. The demo keeps Splunk Enterprise in Docker Compose so reviewers can reproduce the full workflow locally.
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE).
-
+MIT License.
